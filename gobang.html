@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<title>五子棋 · GOD AI</title>
+
+<style>
+body {
+  margin:0;
+  background: linear-gradient(135deg,#111,#2b2b2b);
+  color:white;
+  text-align:center;
+  font-family: sans-serif;
+}
+
+canvas {
+  margin-top:10px;
+  background:#d8a45d;
+  border-radius:12px;
+  box-shadow:0 0 20px rgba(0,0,0,0.8);
+}
+
+button {
+  padding:8px 14px;
+  margin:10px;
+  border:none;
+  border-radius:8px;
+  background:#ffcc66;
+  cursor:pointer;
+}
+</style>
+</head>
+
+<body>
+
+<h1>挑戰偉辰大魔王😈</h1>
+<button onclick="restart()">重新開始</button>
+<p id="status">你是黑棋</p>
+
+<canvas id="board" width="600" height="600"></canvas>
+
+<script>
+const size=15, cell=40;
+const canvas=document.getElementById("board");
+const ctx=canvas.getContext("2d");
+
+let board, gameOver;
+let player=1, ai=2;
+
+function restart(){
+  board=Array.from({length:size},()=>Array(size).fill(0));
+  gameOver=false;
+  draw();
+}
+
+function draw(){
+  ctx.clearRect(0,0,600,600);
+
+  ctx.fillStyle="#d8a45d";
+  ctx.fillRect(0,0,600,600);
+
+  ctx.strokeStyle="#333";
+  for(let i=0;i<size;i++){
+    ctx.beginPath();
+    ctx.moveTo(cell/2,cell/2+i*cell);
+    ctx.lineTo(cell/2+(size-1)*cell,cell/2+i*cell);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(cell/2+i*cell,cell/2);
+    ctx.lineTo(cell/2+i*cell,cell/2+(size-1)*cell);
+    ctx.stroke();
+  }
+
+  for(let y=0;y<size;y++){
+    for(let x=0;x<size;x++){
+      if(board[y][x]){
+        ctx.beginPath();
+        ctx.arc(cell/2+x*cell,cell/2+y*cell,15,0,Math.PI*2);
+        ctx.fillStyle=board[y][x]==1?"black":"white";
+        ctx.fill();
+      }
+    }
+  }
+}
+
+canvas.onclick=e=>{
+  if(gameOver)return;
+
+  const r=canvas.getBoundingClientRect();
+  const x=Math.round((e.clientX-r.left-cell/2)/cell);
+  const y=Math.round((e.clientY-r.top-cell/2)/cell);
+
+  if(board[y][x])return;
+
+  move(x,y,player);
+
+  if(!gameOver) setTimeout(aiMove,50);
+};
+
+function move(x,y,p){
+  board[y][x]=p;
+  draw();
+
+  if(checkWin(x,y)){
+    document.getElementById("status").innerText =
+      p===1?"你贏了？！":"AI贏了";
+    gameOver=true;
+  }
+}
+
+function checkWin(x,y){
+  const dirs=[[1,0],[0,1],[1,1],[1,-1]];
+  let p=board[y][x];
+
+  for(let [dx,dy] of dirs){
+    let count=1;
+
+    for(let i=1;i<5;i++){
+      let nx=x+dx*i, ny=y+dy*i;
+      if(board[ny]&&board[ny][nx]==p) count++;
+      else break;
+    }
+    for(let i=1;i<5;i++){
+      let nx=x-dx*i, ny=y-dy*i;
+      if(board[ny]&&board[ny][nx]==p) count++;
+      else break;
+    }
+
+    if(count>=5) return true;
+  }
+  return false;
+}
+
+// ===== GOD AI =====
+
+function aiMove(){
+  let best=null;
+  let start=Date.now();
+
+  for(let depth=1;depth<=5;depth++){
+    let result=search(depth,-Infinity,Infinity,true,start);
+    if(Date.now()-start>800) break;
+    if(result.move) best=result.move;
+  }
+
+  if(best) move(best.x,best.y,ai);
+}
+
+// Iterative Deepening
+function search(depth,alpha,beta,isMax,start){
+  if(Date.now()-start>800) return {score:evaluate(),move:null};
+
+  if(depth===0) return {score:evaluate(),move:null};
+
+  let moves=getMoves();
+  let bestMove=null;
+
+  if(isMax){
+    let max=-Infinity;
+
+    for(let m of moves){
+      board[m.y][m.x]=ai;
+      let val=search(depth-1,alpha,beta,false,start).score;
+      board[m.y][m.x]=0;
+
+      if(val>max){
+        max=val;
+        bestMove=m;
+      }
+
+      alpha=Math.max(alpha,val);
+      if(beta<=alpha) break;
+    }
+
+    return {score:max,move:bestMove};
+
+  }else{
+    let min=Infinity;
+
+    for(let m of moves){
+      board[m.y][m.x]=player;
+      let val=search(depth-1,alpha,beta,true,start).score;
+      board[m.y][m.x]=0;
+
+      min=Math.min(min,val);
+      beta=Math.min(beta,val);
+      if(beta<=alpha) break;
+    }
+
+    return {score:min,move:null};
+  }
+}
+
+// 候選點（排序）
+function getMoves(){
+  let moves=[];
+
+  for(let y=0;y<size;y++){
+    for(let x=0;x<size;x++){
+      if(!board[y][x] && near(x,y)){
+        let s = evalPoint(x,y,ai)+evalPoint(x,y,player);
+        moves.push({x,y,score:s});
+      }
+    }
+  }
+
+  moves.sort((a,b)=>b.score-a.score);
+  return moves.slice(0,12);
+}
+
+function near(x,y){
+  for(let dy=-2;dy<=2;dy++){
+    for(let dx=-2;dx<=2;dx++){
+      let nx=x+dx, ny=y+dy;
+      if(board[ny]&&board[ny][nx]) return true;
+    }
+  }
+  return false;
+}
+
+// 評分
+function evaluate(){
+  let s=0;
+  for(let y=0;y<size;y++){
+    for(let x=0;x<size;x++){
+      if(board[y][x]==ai) s+=evalPoint(x,y,ai);
+      else if(board[y][x]==player) s-=evalPoint(x,y,player);
+    }
+  }
+  return s;
+}
+
+function evalPoint(x,y,p){
+  let score=0;
+  const dirs=[[1,0],[0,1],[1,1],[1,-1]];
+
+  for(let [dx,dy] of dirs){
+    let count=1, open=0;
+
+    let i=1;
+    while(true){
+      let nx=x+dx*i, ny=y+dy*i;
+      if(board[ny]&&board[ny][nx]==p) count++;
+      else{
+        if(board[ny]&&board[ny][nx]==0) open++;
+        break;
+      }
+      i++;
+    }
+
+    i=1;
+    while(true){
+      let nx=x-dx*i, ny=y-dy*i;
+      if(board[ny]&&board[ny][nx]==p) count++;
+      else{
+        if(board[ny]&&board[ny][nx]==0) open++;
+        break;
+      }
+      i++;
+    }
+
+    score+=pattern(count,open);
+  }
+
+  return score;
+}
+
+function pattern(c,o){
+  if(c>=5) return 1000000;
+  if(c==4&&o==2) return 100000;
+  if(c==4&&o==1) return 10000;
+  if(c==3&&o==2) return 5000;
+  if(c==3&&o==1) return 500;
+  if(c==2&&o==2) return 200;
+  return 10;
+}
+
+restart();
+</script>
+
+</body>
+</html>
